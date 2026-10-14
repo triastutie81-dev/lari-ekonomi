@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Lari Ekonomi - Kuis Interaktif Fase E</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS for Automatic Excel Export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Plus+Jakarta+Sans:wght@500;700;800&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        .font-game {
+            font-family: 'Fredoka', cursive;
+        }
+
+        /* Glassmorphism Styles */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.88);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .btn-game {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 5px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-game:active {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        /* Dynamic Animations */
+        @keyframes float-bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .animate-float {
+            animation: float-bounce 2.2s infinite ease-in-out;
+        }
+
+        @keyframes runner-dash {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            25% { transform: translateY(-4px) rotate(-3deg); }
+            75% { transform: translateY(-2px) rotate(3deg); }
+        }
+
+        .running-animation {
+            animation: runner-dash 0.35s infinite ease-in-out;
+        }
+
+        @keyframes spectator-cheer {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        .cheering-crowd {
+            animation: spectator-cheer 0.8s infinite alternate ease-in-out;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between bg-slate-900 text-slate-100 overflow-x-hidden">
+
+    <script>
+        class RunnerAudioController {
+            constructor() {
+                this.ctx = null;
+                this.isMuted = false;
+                this.bgmTimer = null;
+                this.isBgmPlaying = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playDashSound() {
+                if (this.isMuted || !this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                
+                osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.15);
+
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+
+            playCorrect() {
+                if (this.isMuted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // High upbeat arpeggio
+                const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51]; 
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.06);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.2);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now + idx * 0.06);
+                    osc.stop(now + idx * 0.06 + 0.2);
+                });
+            }
+
+            playWrong() {
+                if (this.isMuted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.linearRampToValueAtTime(90, now + 0.3);
+
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+
+            playVictoryFanfare() {
+                if (this.isMuted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const notes = [
+                    { f: 523.25, d: 0.12, t: 0 },
+                    { f: 523.25, d: 0.12, t: 0.12 },
+                    { f: 523.25, d: 0.12, t: 0.24 },
+                    { f: 659.25, d: 0.35, t: 0.36 },
+                    { f: 783.99, d: 0.2, t: 0.72 },
+                    { f: 1046.50, d: 0.5, t: 0.92 }
+                ];
+
+                notes.forEach(note => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(note.f, now + note.t);
+
+                    gain.gain.setValueAtTime(0.25, now + note.t);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + note.t + note.d);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now + note.t);
+                    osc.stop(now + note.t + note.d);
+                });
+            }
+
+            startBGM() {
+                if (this.isBgmPlaying) return;
+                this.isBgmPlaying = true;
+                
+                // Energetic Runner Bass Rhythm
+                const bassLine = [
+                    261.63, 261.63, 329.63, 261.63, 392.00, 329.63, 293.66, 329.63,
+                    349.23, 349.23, 392.00, 349.23, 440.00, 392.00, 329.63, 293.66
+                ];
+                let step = 0;
+
+                this.bgmTimer = setInterval(() => {
+                    if (this.isMuted || !this.ctx || !this.isBgmPlaying) return;
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(bassLine[step], now);
+
+                    gain.gain.setValueAtTime(0.03, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now);
+                    osc.stop(now + 0.14);
+
+                    step = (step + 1) % bassLine.length;
+                }, 160);
+            }
+
+            stopBGM() {
+                this.isBgmPlaying = false;
+                if (this.bgmTimer) clearInterval(this.bgmTimer);
+            }
+
+            toggleMute() {
+                this.isMuted = !this.isMuted;
+                return this.isMuted;
+            }
+        }
+
+        const audioSys = new RunnerAudioController();
+    </script>
+
+    <!-- Header Controls -->
+    <header class="w-full bg-slate-800/95 border-b border-slate-700 px-4 py-3 flex justify-between items-center z-20 backdrop-blur-md">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center font-bold text-xl text-slate-900 shadow-lg border-2 border-amber-300">
+                🏃
+            </div>
+            <div>
+                <h1 class="font-game text-xl md:text-2xl font-bold tracking-wide text-amber-400">LARI <span class="text-white">EKONOMI</span></h1>
+                <p class="text-xs text-slate-400 font-medium hidden sm:block">Game Evaluasi Mandiri Ekonomi Fase E</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <button id="soundToggle" onclick="toggleAudio()" class="p-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 transition border border-slate-600">
+                <i id="soundIcon" class="fas fa-volume-up text-lg"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-5xl w-full mx-auto p-4 flex flex-col justify-center items-center relative">
+
+        <!-- 1. START SCREEN / REGISTRATION FORM -->
+        <div id="startScreen" class="w-full max-w-lg glass-panel p-6 sm:p-8 rounded-3xl shadow-2xl border border-slate-700 my-auto animate-float">
+            <div class="text-center mb-6">
+                <span class="inline-block px-3 py-1 bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold rounded-full mb-2">
+                    Tantangan Lari Ekonomi
+                </span>
+                <h2 class="font-game text-3xl font-extrabold text-slate-100">Siap Berlari!</h2>
+                <p class="text-sm text-slate-400 mt-1">Isi identitas diri untuk memulai tantangan lari dan merekap skor ke Excel secara otomatis.</p>
+            </div>
+
+            <form id="identityForm" onsubmit="startGame(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">Nama Lengkap Siswa</label>
+                    <div class="relative">
+                        <i class="fas fa-user absolute left-3.5 top-3.5 text-slate-400"></i>
+                        <input type="text" id="playerName" required placeholder="Masukkan Nama Lengkap" 
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-600 text-slate-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">Kelas</label>
+                        <div class="relative">
+                            <i class="fas fa-school absolute left-3.5 top-3.5 text-slate-400"></i>
+                            <input type="text" id="playerClass" required placeholder="Contoh: X-1" 
+                                class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-600 text-slate-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1">Nomor Absen</label>
+                        <div class="relative">
+                            <i class="fas fa-list-ol absolute left-3.5 top-3.5 text-slate-400"></i>
+                            <input type="number" id="playerAbsen" min="1" max="60" required placeholder="15" 
+                                class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-800/90 border border-slate-600 text-slate-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 text-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" class="btn-game w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-game text-xl font-bold rounded-2xl border border-amber-300 shadow-lg flex items-center justify-center space-x-2">
+                        <span>MULAI LARI MARATHON</span>
+                        <i class="fas fa-running text-xl"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 2. GAMEPLAY SCREEN -->
+        <div id="gameplayScreen" class="w-full hidden flex-col space-y-4">
+            
+            <!-- Top Dashboard Stats -->
+            <div class="glass-panel p-3 sm:p-4 rounded-2xl flex justify-between items-center shadow-lg">
+                <div class="flex items-center space-x-4">
+                    <div class="text-left">
+                        <p class="text-xs text-slate-400 font-semibold uppercase">Pelari</p>
+                        <p id="dispPlayerInfo" class="text-sm font-bold text-amber-400 truncate max-w-[120px] sm:max-w-[200px]">-</p>
+                    </div>
+                    <div class="h-8 w-px bg-slate-700"></div>
+                    <div>
+                        <p class="text-xs text-slate-400 font-semibold uppercase">Pos Pertanyaan</p>
+                        <p id="dispProgress" class="text-sm font-bold text-emerald-400">Pos 1/12</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <div class="text-right">
+                        <p class="text-xs text-slate-400 font-semibold uppercase">Waktu</p>
+                        <p id="dispTimer" class="font-mono text-base sm:text-lg font-bold text-cyan-400">00:00</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs text-slate-400 font-semibold uppercase">Skor Lari</p>
+                        <p id="dispScore" class="font-game text-base sm:text-lg font-bold text-amber-400">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Athletic Running Track Viewport -->
+            <div class="relative w-full h-48 sm:h-56 bg-slate-800 rounded-3xl overflow-hidden border-2 border-slate-700 shadow-2xl">
+                <!-- Sky & Background Environment -->
+                <div class="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-sky-500 to-sky-300 flex items-end justify-between px-6">
+                    <!-- Clouds & Stadium Lights -->
+                    <div class="text-2xl opacity-70">☁️</div>
+                    <div class="text-xl opacity-60">☁️</div>
+                    <div class="text-2xl opacity-80">☁️</div>
+                </div>
+
+                <!-- Stadium Crowd Audience -->
+                <div class="absolute top-12 inset-x-0 h-10 bg-indigo-900/90 border-b-2 border-indigo-950 flex justify-around items-end px-4">
+                    <span class="text-base cheering-crowd" style="animation-delay: 0.1s">🏃‍♂️</span>
+                    <span class="text-base cheering-crowd" style="animation-delay: 0.3s">👏</span>
+                    <span class="text-base cheering-crowd" style="animation-delay: 0.2s">🙌</span>
+                    <span class="text-base cheering-crowd" style="animation-delay: 0.5s">📣</span>
+                    <span class="text-base cheering-crowd" style="animation-delay: 0.4s">👏</span>
+                </div>
+
+                <!-- Synthetic Red Athletic Track -->
+                <div class="absolute inset-x-0 bottom-0 top-20 bg-gradient-to-b from-red-700 via-red-600 to-red-800 relative overflow-hidden">
+                    <!-- Track White Lanes -->
+                    <div class="absolute inset-x-0 top-1/3 border-t-2 border-white/60 border-dashed"></div>
+                    <div class="absolute inset-x-0 top-2/3 border-t-2 border-white/60 border-dashed"></div>
+                    
+                    <!-- Finish Line Gate -->
+                    <div class="absolute right-6 top-0 bottom-0 w-8 bg-black/30 border-x-4 border-dashed border-white flex flex-col justify-around items-center">
+                        <div class="bg-amber-400 text-slate-950 font-bold text-[10px] px-1 py-4 rotate-90 rounded shadow tracking-widest">FINISH</div>
+                    </div>
+
+                    <!-- Rival Computer Runner AI -->
+                    <div id="aiRunner" class="absolute bottom-16 transition-all duration-500 ease-out flex flex-col items-center" style="left: 2%;">
+                        <span class="text-[10px] font-bold text-slate-900 bg-amber-300 px-1.5 py-0.5 rounded-full shadow">Pesaing</span>
+                        <div class="text-3xl sm:text-4xl filter drop-shadow">🏃‍♂️</div>
+                    </div>
+
+                    <!-- Player Athlete Runner -->
+                    <div id="playerRunner" class="absolute bottom-3 transition-all duration-300 ease-out flex flex-col items-center" style="left: 2%;">
+                        <span class="text-[10px] font-bold text-white bg-red-600 px-2 py-0.5 rounded-full shadow border border-red-300">Saya</span>
+                        <div id="playerAvatar" class="text-4xl sm:text-5xl filter drop-shadow running-animation transition-transform duration-200">
+                            🏃
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quiz Card (NO Material Title & NO Answer Key shown) -->
+            <div class="glass-panel p-5 sm:p-6 rounded-3xl shadow-xl border border-slate-700 relative">
+                <div class="flex items-center space-x-2 mb-3">
+                    <span class="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider">
+                        Tantangan Pos Lari Ekonomi
+                    </span>
+                </div>
+
+                <h3 id="questionText" class="text-base sm:text-lg font-semibold text-slate-100 leading-relaxed mb-6">
+                    Memuat pertanyaan lari ekonomi...
+                </h3>
+
+                <!-- 5 Options Grid (A, B, C, D, E) -->
+                <div id="optionsGrid" class="grid grid-cols-1 md:grid-cols-1 gap-2.5">
+                    <!-- Dynamic A-E Option Buttons Injected via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. VICTORY / RESULT SCREEN -->
+        <div id="resultScreen" class="w-full max-w-xl glass-panel p-6 sm:p-8 rounded-3xl shadow-2xl border border-slate-700 text-center hidden my-auto">
+            <div class="inline-block p-4 bg-amber-500/20 border border-amber-500/40 rounded-full mb-3">
+                <span class="text-5xl">🥇</span>
+            </div>
+            
+            <h2 class="font-game text-3xl sm:text-4xl font-extrabold text-white">GARIS FINISH TERCAPAI!</h2>
+            <p id="resultSubtitle" class="text-slate-300 text-sm mt-1">Selamat! Kamu berhasil menuntaskan seluruh rintangan lari.</p>
+
+            <!-- Final Scoreboard -->
+            <div class="grid grid-cols-3 gap-3 my-6 bg-slate-800/90 p-4 rounded-2xl border border-slate-700">
+                <div class="p-2">
+                    <p class="text-xs text-slate-400 uppercase font-semibold">Skor Akhir</p>
+                    <p id="resScore" class="font-game text-2xl font-bold text-amber-400">100</p>
+                </div>
+                <div class="p-2 border-x border-slate-700">
+                    <p class="text-xs text-slate-400 uppercase font-semibold">Benar / Salah</p>
+                    <p id="resAccuracy" class="font-game text-2xl font-bold text-emerald-400">10 / 0</p>
+                </div>
+                <div class="p-2">
+                    <p class="text-xs text-slate-400 uppercase font-semibold">Durasi Waktu</p>
+                    <p id="resTime" class="font-mono text-xl font-bold text-cyan-400">01:45</p>
+                </div>
+            </div>
+
+            <p class="text-xs text-amber-400/90 mb-4 bg-amber-500/10 py-2 px-3 rounded-xl border border-amber-500/20">
+                <i class="fas fa-check-circle mr-1"></i> File rekapitulasi Excel (.xlsx) telah diunduh secara otomatis.
+            </p>
+
+            <!-- Control Buttons -->
+            <div class="space-y-3">
+                <button onclick="exportToExcel()" class="btn-game w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-game text-lg font-bold rounded-2xl border border-emerald-400 shadow-lg flex items-center justify-center space-x-2">
+                    <i class="fas fa-file-excel text-xl"></i>
+                    <span>UNDUH ULANG FILE EXCEL (.XLSX)</span>
+                </button>
+
+                <button onclick="resetGame()" class="btn-game w-full py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-2xl border border-slate-600 flex items-center justify-center space-x-2">
+                    <i class="fas fa-redo"></i>
+                    <span>Main Lagi / Pelari Baru</span>
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full text-center py-3 text-xs text-slate-500 border-t border-slate-800/80 bg-slate-950/60">
+        <p>Game Edukasi Interaktif Lari Ekonomi Fase E (SMA Kelas 10) • Kurikulum Merdeka</p>
+    </footer>
+
+    <script>
+        /* 
+           High Quality Grade 10 Economics Question Bank
+           Each question has 5 Options (A, B, C, D, E).
+           NO Material Topic Header / NO Answer Keys shown on player screen.
+        */
+        const rawQuestionBank = [
+            {
+                question: "Di suatu daerah, pasokan beras berkurang drastis akibat bencana banjir, sementara tingkat kebutuhan konsumsi masyarakat tetap tinggi sehingga harga beras melonjak. Fenomena ini menggambarkan konsep fundamental ekonomi yaitu...",
+                options: [
+                    "Kelangkaan sumber daya relatif terhadap kebutuhan manusia",
+                    "Kelebihan penawaran barang kebutuhan pokok di pasar",
+                    "Tercapainya keseimbangan harga pasar secara alami",
+                    "Penurunan tingkat konsumsi masyarakat secara permanen",
+                    "Hilangnya fungsi barang substitusi di pasar lokal"
+                ],
+                correctIndex: 0
+            },
+            {
+                question: "Faktor utama yang paling mendasari terjadinya kelangkaan dalam ilmu ekonomi adalah...",
+                options: [
+                    "Sifat manusia yang selalu merasa puas dan terbatasnya teknologi",
+                    "Keterbatasan jumlah sumber daya dan tidak terbatasnya kebutuhan manusia",
+                    "Tidak adanya regulasi pemerintah dalam mengatur distribusi pasar",
+                    "Banyaknya barang komplementer yang diproduksi oleh produsen",
+                    "Lambatnya laju pertumbuhan penduduk dibanding produksi barang"
+                ],
+                correctIndex: 1
+            },
+            {
+                question: "Seorang siswa membeli buku pelajaran Ekonomi utama dan alat tulis untuk menunjang kegiatan belajarnya di sekolah. Berdasarkan tingkat intensitasnya, kebutuhan tersebut tergolong ke dalam kebutuhan...",
+                options: [
+                    "Sekunder bagi siswa",
+                    "Tersier bagi siswa",
+                    "Primer bagi siswa",
+                    "Jasmani bagi siswa",
+                    "Masa depan bagi siswa"
+                ],
+                correctIndex: 2
+            },
+            {
+                question: "Mendengarkan musik favorit untuk meredakan stres setelah belajar dan berolahraga pagi secara teratur masing-masing memenuhi kebutuhan manusia berdasarkan sifatnya, yaitu kebutuhan...",
+                options: [
+                    "Rohani dan Jasmani",
+                    "Jasmani dan Sekarang",
+                    "Individu dan Publik",
+                    "Masa Depan dan Rohani",
+                    "Sekarang dan Tersier"
+                ],
+                correctIndex: 0
+            },
+            {
+                question: "Menyiapkan tabungan pendidikan tinggi sejak usia dini merupakan tindakan pemenuhan kebutuhan berdasarkan waktu pemenuhannya, yaitu tergolong kebutuhan...",
+                options: [
+                    "Sekarang (mendesak)",
+                    "Masa depan / yang akan datang",
+                    "Sepanjang hayat",
+                    "Tidak terduga",
+                    "Sekunder tambahan"
+                ],
+                correctIndex: 1
+            },
+            {
+                question: "Ketika harga beras mengalami kenaikan signifikan, sebagian besar masyarakat beralih mengonsumsi jagung atau singkong sebagai makanan pokok pengganti. Dalam hal ini, jagung atau singkong terhadap beras bertindak sebagai...",
+                options: [
+                    "Barang komplementer",
+                    "Barang substitusi",
+                    "Barang bebas",
+                    "Barang ilith",
+                    "Barang mebel"
+                ],
+                correctIndex: 1
+            },
+            {
+                question: "Bensin dengan kendaraan bermotor, atau kuota data internet dengan smartphone memiliki hubungan yang saling melengkapi dalam penggunaannya. Pasangan barang tersebut dinamakan barang...",
+                options: [
+                    "Substitusi",
+                    "Ekonomi bebas",
+                    "Komplementer",
+                    "Produksi awal",
+                    "Konsumsi tersier"
+                ],
+                correctIndex: 2
+            },
+            {
+                question: "Sinar matahari di pagi hari, udara segar di daerah pegunungan, dan air laut di pantai dapat diperoleh tanpa memerlukan pengorbanan finansial. Alat pemenuhan kebutuhan ini dikategorikan sebagai barang...",
+                options: [
+                    "Ekonomi",
+                    "Bebas",
+                    "Illith",
+                    "Komplementer",
+                    "Produksi"
+                ],
+                correctIndex: 1
+            },
+            {
+                question: "Kayu gelondongan di hutan diangkut ke pabrik furnitur lalu diolah menjadi meja dan kursi belajar berestetika tinggi. Proses pengolahan ini berhasil meningkatkan kegunaan barang berdasarkan...",
+                options: [
+                    "Place Utility (Kegunaan Tempat)",
+                    "Time Utility (Kegunaan Waktu)",
+                    "Form Utility (Kegunaan Bentuk)",
+                    "Ownership Utility (Kegunaan Kepemilikan)",
+                    "Service Utility (Kegunaan Pelayanan)"
+                ],
+                correctIndex: 2
+            },
+            {
+                question: "Pasir dan batu kali yang dipindahkan dari tepi sungai ke lokasi proyek pembangunan gedung tinggi di perkotaan nilainya menjadi jauh lebih tinggi. Hal ini membuktikan adanya...",
+                options: [
+                    "Place Utility (Kegunaan Tempat)",
+                    "Service Utility (Kegunaan Pelayanan)",
+                    "Form Utility (Kegunaan Bentuk)",
+                    "Time Utility (Kegunaan Waktu)",
+                    "Ownership Utility (Kegunaan Kepemilikan)"
+                ],
+                correctIndex: 0
+            },
+            {
+                question: "Payung dan jas hujan menjadi sangat berguna serta memiliki nilai guna tinggi saat musim hujan tiba dibandingkan saat musim kemarau terik. Fenomena ini menunjukkan nilai...",
+                options: [
+                    "Ownership Utility",
+                    "Time Utility (Kegunaan Waktu)",
+                    "Service Utility",
+                    "Form Utility",
+                    "Place Utility"
+                ],
+                correctIndex: 1
+            },
+            {
+                question: "Cangkul dan traktor menjadi jauh lebih produktif dan bermanfaat secara maksimal setelah dibeli dan dimiliki secara sah oleh seorang petani. Hal ini mencerminkan kegunaan...",
+                options: [
+                    "Ownership Utility (Kegunaan Kepemilikan)",
+                    "Service Utility (Kegunaan Pelayanan)",
+                    "Place Utility (Kegunaan Tempat)",
+                    "Form Utility (Kegunaan Bentuk)",
+                    "Time Utility (Kegunaan Waktu)"
+                ],
+                correctIndex: 0
+            }
+        ];
+
+        // Global Game States
+        let player = { name: '', classStr: '', absen: '' };
+        let activeQuestions = [];
+        let currentQIndex = 0;
+        let score = 0;
+        let correctCount = 0;
+        let wrongCount = 0;
+        let playerPos = 0; // percentage on track
+        let aiPos = 0;
+        let timerInterval = null;
+        let elapsedSeconds = 0;
+        let aiInterval = null;
+        let playerAnswersLog = [];
+
+        function toggleAudio() {
+            audioSys.init();
+            const isMuted = audioSys.toggleMute();
+            const icon = document.getElementById('soundIcon');
+            if (isMuted) {
+                icon.className = 'fas fa-volume-mute text-lg text-red-400';
+            } else {
+                icon.className = 'fas fa-volume-up text-lg text-emerald-400';
+            }
+        }
+
+        function shuffleArray(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        }
+
+        function startGame(e) {
+            e.preventDefault();
+            audioSys.init();
+            audioSys.startBGM();
+
+            // Collect Player Metadata
+            player.name = document.getElementById('playerName').value.trim();
+            player.classStr = document.getElementById('playerClass').value.trim();
+            player.absen = document.getElementById('playerAbsen').value.trim();
+
+            document.getElementById('dispPlayerInfo').textContent = `${player.name} (${player.classStr})`;
+
+            // Prepare Questions & 5 Options (Shuffled)
+            activeQuestions = shuffleArray(rawQuestionBank).map(q => {
+                const correctText = q.options[q.correctIndex];
+                const shuffledOpts = shuffleArray(q.options);
+                const newCorrectIdx = shuffledOpts.indexOf(correctText);
+
+                return {
+                    question: q.question,
+                    options: shuffledOpts,
+                    _key: btoa(`RUN_${newCorrectIdx}_KEY`),
+                    rawCorrectText: correctText
+                };
+            });
+
+            // Reset Logic
+            currentQIndex = 0;
+            score = 0;
+            correctCount = 0;
+            wrongCount = 0;
+            playerPos = 2;
+            aiPos = 2;
+            elapsedSeconds = 0;
+            playerAnswersLog = [];
+
+            // UI Transitions
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('resultScreen').classList.add('hidden');
+            document.getElementById('gameplayScreen').classList.remove('hidden');
+            document.getElementById('gameplayScreen').classList.add('flex');
+
+            updateTrackPositions();
+            renderQuestion();
+
+            // Start Stopwatch
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                elapsedSeconds++;
+                const mins = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+                const secs = String(elapsedSeconds % 60).padStart(2, '0');
+                document.getElementById('dispTimer').textContent = `${mins}:${secs}`;
+            }, 1000);
+
+            // Rival AI Runner movement
+            clearInterval(aiInterval);
+            aiInterval = setInterval(() => {
+                if (aiPos < 90) {
+                    aiPos += Math.random() * 2.2 + 0.6;
+                    if (aiPos > 90) aiPos = 90;
+                    updateTrackPositions();
+                }
+            }, 2300);
+        }
+
+        function updateTrackPositions() {
+            const playerElem = document.getElementById('playerRunner');
+            const aiElem = document.getElementById('aiRunner');
+
+            playerElem.style.left = `${Math.min(playerPos, 90)}%`;
+            aiElem.style.left = `${Math.min(aiPos, 90)}%`;
+        }
+
+        function renderQuestion() {
+            if (currentQIndex >= activeQuestions.length) {
+                finishGame();
+                return;
+            }
+
+            const q = activeQuestions[currentQIndex];
+            document.getElementById('dispProgress').textContent = `Pos ${currentQIndex + 1}/${activeQuestions.length}`;
+            document.getElementById('questionText').textContent = q.question;
+            document.getElementById('dispScore').textContent = score;
+
+            const grid = document.getElementById('optionsGrid');
+            grid.innerHTML = '';
+
+            const prefixes = ['A', 'B', 'C', 'D', 'E'];
+            q.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "btn-game w-full p-3.5 rounded-2xl bg-slate-800/90 hover:bg-slate-700/90 border border-slate-600 text-left font-medium text-xs sm:text-sm text-slate-200 transition flex items-start space-x-3";
+                btn.onclick = () => checkAnswer(idx);
+
+                btn.innerHTML = `
+                    <span class="w-6 h-6 rounded-lg bg-slate-700 border border-slate-500 text-amber-400 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
+                        ${prefixes[idx]}
+                    </span>
+                    <span class="flex-1 leading-snug">${opt}</span>
+                `;
+                grid.appendChild(btn);
+            });
+        }
+
+        function checkAnswer(selectedIdx) {
+            const q = activeQuestions[currentQIndex];
+            // Decode hidden obfuscated key
+            const expectedIdx = parseInt(atob(q._key).split('_')[1]);
+            const isCorrect = (selectedIdx === expectedIdx);
+
+            const avatar = document.getElementById('playerAvatar');
+
+            // Record Log for Excel Output
+            playerAnswersLog.push({
+                no: currentQIndex + 1,
+                question: q.question,
+                selected: q.options[selectedIdx],
+                correct: q.rawCorrectText,
+                isCorrect: isCorrect ? 'BENAR' : 'SALAH'
+            });
+
+            if (isCorrect) {
+                audioSys.playCorrect();
+                audioSys.playDashSound();
+                score += 10;
+                correctCount++;
+
+                // Boost Player Forward
+                playerPos += (88 / activeQuestions.length);
+                if (playerPos > 90) playerPos = 90;
+
+                // Visual Speed Surge
+                avatar.classList.add('-translate-y-4', 'scale-110');
+                setTimeout(() => {
+                    avatar.classList.remove('-translate-y-4', 'scale-110');
+                }, 300);
+
+            } else {
+                audioSys.playWrong();
+                wrongCount++;
+
+                // Stumble / Trip Effect
+                avatar.classList.remove('running-animation');
+                avatar.classList.add('rotate-45', 'opacity-70');
+                setTimeout(() => {
+                    avatar.classList.remove('rotate-45', 'opacity-70');
+                    avatar.classList.add('running-animation');
+                }, 450);
+            }
+
+            updateTrackPositions();
+            currentQIndex++;
+
+            setTimeout(() => {
+                renderQuestion();
+            }, 400);
+        }
+
+        function finishGame() {
+            clearInterval(timerInterval);
+            clearInterval(aiInterval);
+            audioSys.stopBGM();
+            audioSys.playVictoryFanfare();
+
+            // Fireworks/Confetti
+            if (window.confetti) {
+                confetti({
+                    particleCount: 140,
+                    spread: 85,
+                    origin: { y: 0.6 }
+                });
+            }
+
+            // Screen Switch
+            document.getElementById('gameplayScreen').classList.add('hidden');
+            document.getElementById('gameplayScreen').classList.remove('flex');
+            document.getElementById('resultScreen').classList.remove('hidden');
+
+            const mins = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+            const secs = String(elapsedSeconds % 60).padStart(2, '0');
+            const formattedTime = `${mins}:${secs}`;
+
+            document.getElementById('resScore').textContent = score;
+            document.getElementById('resAccuracy').textContent = `${correctCount} / ${wrongCount}`;
+            document.getElementById('resTime').textContent = formattedTime;
+
+            if (playerPos >= aiPos) {
+                document.getElementById('resultSubtitle').textContent = `Luar biasa ${player.name}! Kamu meraih Medali Emas Lari Ekonomi!`;
+            } else {
+                document.getElementById('resultSubtitle').textContent = `Kerja bagus ${player.name}! Tetap tingkatkan pemahaman Ekonomi kamu!`;
+            }
+
+            // Auto Trigger Excel Export
+            setTimeout(() => {
+                exportToExcel();
+            }, 600);
+        }
+
+        function exportToExcel() {
+            if (!window.XLSX) {
+                alert("Pustaka Excel belum siap.");
+                return;
+            }
+
+            const mins = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+            const secs = String(elapsedSeconds % 60).padStart(2, '0');
+            const formattedTime = `${mins}:${secs}`;
+
+            // Sheet 1: Summary Data
+            const summaryData = [
+                ["REKAPITULASI HASIL GAME LARI EKONOMI FASE E"],
+                ["Mata Pelajaran", "Ekonomi Fase E (SMA Kelas 10)"],
+                ["Tanggal Pelaksanaan", new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })],
+                [],
+                ["IDENTITAS SISWA"],
+                ["Nama Lengkap", player.name],
+                ["Kelas", player.classStr],
+                ["Nomor Absen", player.absen],
+                [],
+                ["ANALISIS PEROLEHAN SKOR"],
+                ["Total Skor Akhir", score],
+                ["Jumlah Jawaban Benar", correctCount],
+                ["Jumlah Jawaban Salah", wrongCount],
+                ["Total Durasi Lari", formattedTime],
+                ["Status Evaluasi", score >= 70 ? "TUNTAS (LULUS)" : "REMEDIAL"]
+            ];
+
+            // Sheet 2: Detailed Question Log
+            const detailHeaders = [
+                ["DETAIL JAWABAN SISWA PER POS PERTANYAAN"],
+                [],
+                ["No Pos", "Pertanyaan Kuis", "Jawaban Siswa", "Kunci Jawaban Benar", "Status"]
+            ];
+
+            playerAnswersLog.forEach(log => {
+                detailHeaders.push([
+                    log.no,
+                    log.question,
+                    log.selected,
+                    log.correct,
+                    log.isCorrect
+                ]);
+            });
+
+            // Construct Workbook
+            const wb = XLSX.utils.book_new();
+            const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+            const wsDetail = XLSX.utils.aoa_to_sheet(detailHeaders);
+
+            // Styling column widths
+            wsSummary['!cols'] = [{ wch: 25 }, { wch: 45 }];
+            wsDetail['!cols'] = [{ wch: 10 }, { wch: 55 }, { wch: 35 }, { wch: 35 }, { wch: 12 }];
+
+            XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan Nilai");
+            XLSX.utils.book_append_sheet(wb, wsDetail, "Analisis Detail Jawaban");
+
+            const cleanName = player.name.replace(/[^a-zA-Z0-9]/g, "_");
+            const fileName = `Hasil_LariEkonomi_${cleanName}_${player.classStr}.xlsx`;
+
+            XLSX.writeFile(wb, fileName);
+        }
+
+        function resetGame() {
+            document.getElementById('resultScreen').classList.add('hidden');
+            document.getElementById('startScreen').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
